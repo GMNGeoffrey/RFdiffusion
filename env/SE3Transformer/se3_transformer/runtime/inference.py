@@ -29,7 +29,7 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
 from tqdm import tqdm, trange
 
-from se3_transformer.runtime import gpu_affinity
+# from se3_transformer.runtime import gpu_affinity
 from se3_transformer.runtime.arguments import PARSER
 from se3_transformer.runtime.callbacks import BaseCallback
 from se3_transformer.runtime.loggers import DLLogger, WandbLogger, LoggerCollection
@@ -87,7 +87,7 @@ if __name__ == '__main__':
 
     major_cc, minor_cc = torch.cuda.get_device_capability()
 
-    loggers = [DLLogger(save_dir=args.log_dir, filename=args.dllogger_name)]
+    loggers = [] #[DLLogger(save_dir=args.log_dir, filename=args.dllogger_name)]
     if args.wandb:
         loggers.append(WandbLogger(name=f'QM9({args.task})', save_dir=args.log_dir, project='se3-transformer'))
     logger = LoggerCollection(loggers)
