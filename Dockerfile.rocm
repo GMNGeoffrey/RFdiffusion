@@ -1,0 +1,104 @@
+# Docker container for running RFDiffusion and DGL on AMD GPUs with ROCM
+FROM rocm/pytorch:rocm6.3.1_ubuntu22.04_py3.10_pytorch
+
+# Clang for compiling DGL
+# We need https://github.com/llvm/llvm-project/pull/93976
+WORKDIR /install-llvm
+RUN wget https://apt.llvm.org/llvm.sh \
+    && chmod +x llvm.sh \
+    && ./llvm.sh 19 \
+    && apt-get update \
+    && apt-get install -y libomp-19-dev \
+    && rm -rf /install-llvm
+
+ENV CC=/usr/bin/clang-19
+ENV CXX=/usr/bin/clang++-19
+
+# Patch ROCM headers with a couple bug fixes for DeviceCopy
+WORKDIR /patch-rocm
+RUN apt-get update \
+    && apt-get install -y patchutils \
+    && wget https://patch-diff.githubusercontent.com/raw/ROCm/rocPRIM/pull/662.patch \
+    && wget https://patch-diff.githubusercontent.com/raw/ROCm/hipCUB/pull/433.patch \
+    && cd /opt/rocm/ \
+    && filterdiff /patch-rocm/662.patch --strip-match=2 --strip=2 -i 'include/*' | patch -p0 \
+    && filterdiff /patch-rocm/433.patch --strip-match=2 --strip=2 -i 'include/*' | patch -p0 \
+    && rm -rf /patch-rocm
+
+# Python library deps for DGL and RFDiffusion
+WORKDIR /install-py-deps
+# TODO: figure out if we can use numpy 2. There's kind of version mismatch with
+# the rocm base image or something
+# DGL deps
+RUN pip install rdflib==7.1.3 numpy==1.26 scipy==1.14 \
+    # RFdiffusion deps
+    && pip install hydra-core pyrsistent e3nn==0.3.3 decorator==5.1.0 \
+    && rm -rf /install-py-deps
+
+# Checkout and build DGL
+ENV DGL_HOME=/dgl
+ENV DGLBACKEND=pytorch
+ARG DGL_COMMIT=7823da4802df4c760513e695c53bf8b7d848076f
+# CDNA2 and CDNA3
+ARG GPU_TARGETS="gfx90a;gfx942"
+WORKDIR "${DGL_HOME}"
+RUN git init . \
+    && git remote add origin https://github.com/nod-ai/dgl \
+    && git fetch origin "${DGL_COMMIT}" \
+    && git checkout FETCH_HEAD \
+    # These submodules are big and only required by graphbolt and/or nvidia-specific
+    && git rm third_party/cccl third_party/cuco third_party/taskflow/ third_party/liburing/ third_party/libxsmm/ \
+    && git submodule update --init -j 8 \
+    && cmake \
+        -DUSE_ROCM=ON \
+        -DGPU_TARGETS="${GPU_TARGETS}" \
+        -DCMAKE_HIP_FLAGS="-Wno-deprecated -Wno-pass-failed -Werror" \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+        -DROCM_WARN_TOOLCHAIN_VAR=OFF \
+        -DCMAKE_C_FLAGS="-Wno-deprecated -Wno-unneeded-internal-declaration -Wno-vla-cxx-extension -Werror" \
+        -DCMAKE_CXX_FLAGS="-Wno-deprecated -Wno-unneeded-internal-declaration -Wno-vla-cxx-extension -Werror" \
+        -DCMAKE_INSTALL_PREFIX=build/install \
+        -DCMAKE_C_COMPILER=/usr/bin/clang-19 \
+        -DCMAKE_CXX_COMPILER=/usr/bin/clang++-19 \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_TYPE=release \
+        -DBUILD_CPP_TEST=ON \
+        -DBUILD_GRAPHBOLT=OFF \
+        -DBUILD_SPARSE=ON \
+        -DUSE_LIBXSMM=OFF \
+        -DUSE_OPENMP=ON \
+        -B build \
+        -G Ninja \
+    && cmake --build build \
+    && cd python \
+    && python setup.py install \
+    && python setup.py build_ext --inplace \
+    && cd ..
+
+# Checkout and install RFDiffusion
+# This is coming from my fork at the moment
+ARG RFDIFFUSION_COMMIT=9b8f5650486281eaa742da96d557e22b08bcd4bb
+WORKDIR /rfdiffusion
+RUN git init . \
+    && git remote add origin https://github.com/GMNGeoffrey/RFdiffusion \
+    && git fetch origin "${RFDIFFUSION_COMMIT}" \
+    && git checkout FETCH_HEAD \
+    && cd env/SE3Transformer/ \
+    && python setup.py install \
+    && cd ../.. \
+    && pip install -e .
+
+WORKDIR /rfdiffusion
+RUN  mkdir models \
+    && cd models \
+    && wget --no-verbose http://files.ipd.uw.edu/pub/RFdiffusion/6f5902ac237024bdd0c176cb93063dc4/Base_ckpt.pt \
+    && wget --no-verbose http://files.ipd.uw.edu/pub/RFdiffusion/e29311f6f1bf1af907f9ef9f44b8328b/Complex_base_ckpt.pt \
+    && wget --no-verbose http://files.ipd.uw.edu/pub/RFdiffusion/60f09a193fb5e5ccdc4980417708dbab/Complex_Fold_base_ckpt.pt \
+    && wget --no-verbose http://files.ipd.uw.edu/pub/RFdiffusion/74f51cfb8b440f50d70878e05361d8f0/InpaintSeq_ckpt.pt \
+    && wget --no-verbose http://files.ipd.uw.edu/pub/RFdiffusion/76d00716416567174cdb7ca96e208296/InpaintSeq_Fold_ckpt.pt \
+    && wget --no-verbose http://files.ipd.uw.edu/pub/RFdiffusion/5532d2e1f3a4738decd58b19d633b3c3/ActiveSite_ckpt.pt \
+    && wget --no-verbose http://files.ipd.uw.edu/pub/RFdiffusion/12fc204edeae5b57713c5ad7dcb97d39/Base_epoch8_ckpt.pt \
+    && wget --no-verbose http://files.ipd.uw.edu/pub/RFdiffusion/f572d396fae9206628714fb2ce00f72e/Complex_beta_ckpt.pt \
+    && wget --no-verbose http://files.ipd.uw.edu/pub/RFdiffusion/1befcb9b28e2f778f53d47f18b7597fa/RF_structure_prediction_weights.pt \
+    && cd .. \
+    && tar -xf examples/ppi_scaffolds_subset.tar.gz -C examples/
