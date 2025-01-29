@@ -5,7 +5,15 @@ HIP (in https://github.com/nod-ai/dgl).
 
 ## Docker
 
-The dockerfile is at [./Dockerfile.rocm]. To run the docker container:
+The dockerfile is at [./Dockerfile.rocm].
+
+To build the docker container:
+
+```shell
+docker build -t rfdiffusion-dgl-rocm - <Dockerfile.rocm
+```
+
+To run the docker container:
 
 ```shell
 docker run -it \
@@ -38,16 +46,15 @@ machine, I highly recommend using a Python virtual environment.
 
 ## DGL
 
-DGL has been ported to work with HIP in https://github.com/nod-ai/dgl. There are
-currently in-flight pull requests and the Docker container fetches from the leaf
-of these. Only the PyTorch backend is supported and distributed multi-GPU
-execution is not supported, but otherwise all C++ and Python unit tests pass.
-You can run them as:
+DGL has been ported to work with HIP in
+https://github.com/nod-ai/dgl/tree/hipify-inplace. Only the PyTorch backend is
+supported and distributed multi-GPU execution is not supported, but otherwise
+all C++ and Python unit tests pass. You can run them as:
 
 ```shell
 cd /dgl
 # C++ Tests
-out/runUnitTests
+build/runUnitTests
 # Python GPU tests
 bash ./script/run_pytest.sh -g \
     tests/python/pytorch/ \
@@ -88,6 +95,9 @@ I've added a few minor patches to RFDiffusion: updating SE3Transformer to the
 latest from upstream and commenting out a couple of NVIDIA-specific
 dependencies. Running RFDiffusion should work as described in the README. The
 Conda environment setup is specific to CUDA (and a specific version thereof), so
-I just used a virtual environment and installed dependencies with pip.
+when working locally I just used a virtual environment and installed
+dependencies with pip.
 
+The docker container should have everything you need and you should be able to
+jump straight to the [README Usage section](./README.md#usage).
 
