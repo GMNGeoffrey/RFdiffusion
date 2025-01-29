@@ -38,7 +38,7 @@ RUN pip install rdflib==7.1.3 numpy==1.26 scipy==1.14 networkx==3.4.2 \
 # Checkout and build DGL
 ENV DGL_HOME=/dgl
 ENV DGLBACKEND=pytorch
-ARG DGL_COMMIT=07797b34c77b86b326b222059a526163583a9364
+ARG DGL_COMMIT=7c3b60dd4408143d08048e3aeb1d83dd2eb0f01b
 # CDNA2 and CDNA3
 ARG GPU_TARGETS="gfx90a;gfx942"
 WORKDIR "${DGL_HOME}"
