@@ -226,7 +226,16 @@ class Sampler:
         self.d_t1d=self._conf.preprocess.d_t1d
         self.d_t2d=self._conf.preprocess.d_t2d
         self._log.info('Creating model...')
-        model = RoseTTAFoldModule(**self._conf.model, d_t1d=self.d_t1d, d_t2d=self.d_t2d, T=self._conf.diffuser.T, device=self.device)
+        # tensor_cores are a bit of a weird case here. They need to be passed to
+        # the model init, but they aren't really a configuration of the model
+        # itself. There's logic to check that inference isn't using any model
+        # parameters that weren't defined at training, which would error if we
+        # tried to put this in the model config from the start. So instead we
+        # add it to the parameters here.
+        model_conf = OmegaConf.to_container(self._conf.model)
+        model_conf["SE3_param_full"]["tensor_cores"] = self._conf.inference.tensor_cores
+        model_conf["SE3_param_topk"]["tensor_cores"] = self._conf.inference.tensor_cores
+        model = RoseTTAFoldModule(**model_conf, d_t1d=self.d_t1d, d_t2d=self.d_t2d, T=self._conf.diffuser.T, device=self.device)
         self._log.info('...model created')
         if self._conf.logging.inputs:
             pickle_dir = pickle_function_call(model, 'forward', 'inference')

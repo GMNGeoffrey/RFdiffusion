@@ -25,6 +25,7 @@ inference:
   compile: False
   compilation_mode: null
   require_gpu: False
+  tensor_cores: False
 
 contigmap:
   contigs: null

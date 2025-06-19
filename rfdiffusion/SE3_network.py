@@ -9,12 +9,25 @@ from rfdiffusion.util_module import init_lecun_normal_param
 from se3_transformer.model import SE3Transformer
 from se3_transformer.model.fiber import Fiber
 
+
 class SE3TransformerWrapper(nn.Module):
     """SE(3) equivariant GCN with attention"""
-    def __init__(self, num_layers=2, num_channels=32, num_degrees=3, n_heads=4, div=4,
-                 l0_in_features=32, l0_out_features=32,
-                 l1_in_features=3, l1_out_features=2,
-                 num_edge_features=32, device=None):
+
+    def __init__(
+        self,
+        num_layers=2,
+        num_channels=32,
+        num_degrees=3,
+        n_heads=4,
+        div=4,
+        l0_in_features=32,
+        l0_out_features=32,
+        l1_in_features=3,
+        l1_out_features=2,
+        num_edge_features=32,
+        tensor_cores=False,
+        device=None,
+    ):
         super().__init__()
         # Build the network
         self.l1_in = l1_in_features
@@ -39,16 +52,18 @@ class SE3TransformerWrapper(nn.Module):
                 fiber_hidden = Fiber.create(num_degrees, num_channels)
                 fiber_out = Fiber({0: l0_out_features})
 
-        self.se3 = SE3Transformer(num_layers=num_layers,
-                                  fiber_in=fiber_in,
-                                  fiber_hidden=fiber_hidden,
-                                  fiber_out = fiber_out,
-                                  num_heads=n_heads,
-                                  channels_div=div,
-                                  fiber_edge=fiber_edge,
-                                  use_layer_norm=True,
-                                  device=device)
-                                  #use_layer_norm=False)
+        self.se3 = SE3Transformer(
+            num_layers=num_layers,
+            fiber_in=fiber_in,
+            fiber_hidden=fiber_hidden,
+            fiber_out=fiber_out,
+            num_heads=n_heads,
+            channels_div=div,
+            fiber_edge=fiber_edge,
+            use_layer_norm=True,
+            tensor_cores=tensor_cores,
+            device=device,
+        )
 
         self.reset_parameter(device)
 
